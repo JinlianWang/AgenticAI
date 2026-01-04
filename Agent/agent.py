@@ -1,13 +1,16 @@
 import ast
 import inspect
+import json
 import os
 import re
+from datetime import datetime
 from string import Template
 from typing import List, Callable, Tuple
 
 import click
 from dotenv import load_dotenv
 from openai import OpenAI
+import httpx
 import platform
 
 from prompt_template import react_system_prompt_template
@@ -18,9 +21,12 @@ class ReActAgent:
         self.tools = { func.__name__: func for func in tools }
         self.model = model
         self.project_directory = project_directory
+        self.log_file = os.path.join(self.project_directory, "model_http.log")
+        http_client = self._build_http_client()
+        # Use default OpenAI endpoint with key from environment
         self.client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
             api_key=ReActAgent.get_api_key(),
+            http_client=http_client,
         )
 
     def run(self, user_input: str):
@@ -43,12 +49,18 @@ class ReActAgent:
             # 检测模型是否输出 Final Answer，如果是的话，直接返回
             if "<final_answer>" in content:
                 final_answer = re.search(r"<final_answer>(.*?)</final_answer>", content, re.DOTALL)
-                return final_answer.group(1)
+                if final_answer:
+                    return final_answer.group(1)
+                # 如果模型提前输出了 <final_answer> 但没有闭合标签，继续下一轮
+                print("\n\n⚠️ Final answer 标签不完整，等待模型补全……")
 
             # 检测 Action
             action_match = re.search(r"<action>(.*?)</action>", content, re.DOTALL)
             if not action_match:
-                raise RuntimeError("模型未输出 <action>")
+                warning = "请严格按照提示词输出 <thought> 后紧跟 <action>。"
+                print("\n\n⚠️ 未检测到 <action>，向模型反馈格式错误。")
+                messages.append({"role": "user", "content": warning})
+                continue
             action = action_match.group(1)
             tool_name, args = self.parse_action(action)
 
@@ -95,9 +107,9 @@ class ReActAgent:
     def get_api_key() -> str:
         """Load the API key from an environment variable."""
         load_dotenv()
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("未找到 OPENROUTER_API_KEY 环境变量，请在 .env 文件中设置。")
+            raise ValueError("未找到 OPENAI_API_KEY 环境变量，请在 .env 文件中设置。")
         return api_key
 
     def call_model(self, messages):
@@ -107,8 +119,57 @@ class ReActAgent:
             messages=messages,
         )
         content = response.choices[0].message.content
+        self._append_log({
+            "type": "chat_completion",
+            "timestamp": self._now(),
+            "request": {"model": self.model, "messages": messages},
+            "response": json.loads(response.model_dump_json()),
+        })
         messages.append({"role": "assistant", "content": content})
         return content
+    def _build_http_client(self):
+        def log_request(request):
+            try:
+                self._append_log({
+                    "type": "http_request",
+                    "timestamp": self._now(),
+                    "method": request.method,
+                    "url": str(request.url),
+                    "headers": dict(request.headers),
+                    "body": request.content.decode() if request.content else None,
+                })
+            except Exception:
+                pass
+
+        def log_response(response):
+            try:
+                self._append_log({
+                    "type": "http_response",
+                    "timestamp": self._now(),
+                    "status_code": response.status_code,
+                    "reason_phrase": response.reason_phrase,
+                    "headers": dict(response.headers),
+                    "body": response.text,
+                })
+            except Exception:
+                pass
+
+        return httpx.Client(event_hooks={
+            "request": [log_request],
+            "response": [log_response],
+        })
+
+    def _append_log(self, data):
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(data, ensure_ascii=False, indent=2))
+                f.write("\n\n")
+        except Exception:
+            pass
+
+    @staticmethod
+    def _now():
+        return datetime.utcnow().isoformat() + "Z"
 
     def parse_action(self, code_str: str) -> Tuple[str, List[str]]:
         match = re.match(r'(\w+)\((.*)\)', code_str, re.DOTALL)
@@ -216,7 +277,8 @@ def main(project_directory):
     project_dir = os.path.abspath(project_directory)
 
     tools = [read_file, write_to_file, run_terminal_command]
-    agent = ReActAgent(tools=tools, model="openai/gpt-4o", project_directory=project_dir)
+    model_name = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    agent = ReActAgent(tools=tools, model=model_name, project_directory=project_dir)
 
     task = input("请输入任务：")
 

@@ -1,0 +1,5 @@
+.venv/
+.env
+__pycache__/
+snake/model_http.log
+run_output.txt
