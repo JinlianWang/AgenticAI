@@ -24,4 +24,4 @@
    python agent.py snake
    ```
    根据提示输入任务，例如：
-   > 写一个贪吃蛇游戏，使用 HTML、CSS、JavaScript，分别写入 snake/index.html、snake/style.css、snake/script.js，并确保能直接在浏览器里运行
+   > 写一个贪吃蛇游戏，使用 HTML、CSS、JavaScript，分别写入 ./snake/index.html、./snake/style.css、./snake/script.js，并确保能直接在浏览器里运行
