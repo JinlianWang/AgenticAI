@@ -25,6 +25,25 @@ node guardrail.js "Custom text"   # run any custom prompt (quote if it has space
 
 The script prints coarse-grained request lifecycle logs, the generated text (for safe prompts), and the entire response payload. If a guardrail fires, the catch block prints the guardrail info instead.
 
+## Example runs
+
+```
+# 1. Violent preset (triggers moderation guardrail before API call)
+export GUARDRAIL_PROMPT_PRESET=violation
+node guardrail.js
+
+# 2. Safe preset (passes all guardrails and prints a quote)
+node guardrail.js safe
+
+# 3. Custom prompt with URL (URL filter input guardrail trips)
+node guardrail.js "Summarize https://example.com"
+
+# 4. Custom prompt that requests PII in the output (output guardrail blocks)
+node guardrail.js "Invent a fictional character and include their phone number"
+```
+
+You can mix CLI args and the `GUARDRAIL_PROMPT_PRESET` environment variable—arguments always win if both are provided. Each run will either log the safe completion or print JSON for the guardrail that blocked the request, making it easy to observe how each rule behaves.
+
 ## Guardrail configuration
 
 `guardrail_config.json` sets up:
