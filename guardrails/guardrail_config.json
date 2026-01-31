@@ -1,0 +1,16 @@
+{
+    "version": 1,
+    "input": {
+        "version": 1,
+        "guardrails": [
+            {"name": "URL Filter", "config": {}},
+            {"name": "Moderation", "config": {"categories": ["hate", "violence"]}}
+        ]
+    },
+    "output": {
+        "version": 1,
+        "guardrails": [
+            {"name": "Contains PII", "config": {"entities": ["EMAIL_ADDRESS", "PHONE_NUMBER"], "block": true, "detect_encoded_pii": false}}
+        ]
+    }
+}

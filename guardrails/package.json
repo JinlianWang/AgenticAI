@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@openai/guardrails": "^0.2.1"
+  }
+}
